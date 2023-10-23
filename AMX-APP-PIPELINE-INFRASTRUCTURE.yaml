@@ -1,0 +1,1192 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  AWS CloudFormation crea los siguientes recursos para el pipeline de infraestructura:
+  - AWS IAM ROLES
+  - AWS CODEPIPELINE
+  - AWS CODEBUILD
+  - AWS SNS
+  - AWS CLOUDWATCH LOGGROUP
+  - AWS EVENTBRIDGE RULES
+
+Metadata:
+
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Parametros generales pipeline
+        Parameters:
+          - StackEnvironment
+          - AppPrefix
+          - AppPrefixLower
+          - TemplateFileName
+          - ParameterFileName
+          - NewStackName
+      - Label:
+          default: CodePipeline
+        Parameters:
+          - CodePipelineName
+#          - BucketName
+          - IaCBucketName
+          - EmailNotification
+          - RepoIaCConnectionArn
+          - RepoIaCName
+          - RepoIaCBranchName
+          - RepoPipelineConnectionArn
+          - RepoPipelineName
+          - RepoPipelineBranchName
+          - ManualApproval
+          - CmkBucketKey
+          - CmkSnsKey
+          - CmkCloudWatchLogGroupKey
+      - Label:
+          default: CodeBuild
+        Parameters:
+          - vpcId
+          - subnetId
+          - SecurityGroupCodeBuild
+          - RetentionDays
+          - CloudWatchCodeBuildRuleName
+          - CodebuildCMK
+      - Label:
+          default: Configuracion Tags Pipeline IaC
+        Parameters:
+          - AreaResponsable
+          - CentroDeCosto
+          - DuenoDeLaCuenta
+          - Proyecto
+          - Aplicacion
+          - ImpactoANegocio
+
+Parameters:
+
+  StackEnvironment:
+    Type: String
+    Description: 'Clave del ambiente donde se esta haciendo el despliegue en mayusculas (DE, Q, PD)'
+    AllowedValues:
+      - 'PD'
+      - 'Q'
+      - 'DE'
+      
+  AppPrefix:
+    Type: String
+    Description: 'Prefijo del aplicativo de acuerdo a la nomenclatura de AMX en letras mayusculas (ej. AMX-APP)'
+    Default: 'AMX-APP'
+
+  AppPrefixLower:
+    Type: String
+    Description: 'Prefijo del aplicativo de acuerdo a la nomenclatura de AMX en letras minusculas (ej. amx-app)'
+    Default: 'amx-app'
+
+  TemplateFileName:
+    Type: String
+    Description: 'Nombre del archivo que contiene la plantilla CloudFormation con la IaC. (ej. AMX-APP-VPC-CF.yaml)'
+    Default: ''
+
+  ParameterFileName:
+    Type: String
+    Description: 'Nombre del archivo que contiene los parametros requeridos por la plantilla CloudFormation en formato JSON. (ej. AMX-APP-VPC-CF.json)'
+    Default: ''
+
+  NewStackName:
+    Type: String
+    Description: 'Nombre del Stack CloudFormation a crear en base a la plantilla en TemplateFileName y parameteros en ParameterFileName. (ej. AMX-APP-VPC-CF).'
+    Default: ''
+
+  CodePipelineName:
+    Type: String
+    Description: 'Nombre de recurso Codepipeline IaC'
+    Default: 'IAC'
+
+#  BucketName:
+#    Type: String
+#    Description: 'Nombre de bucket S3 para alojar los artefactos de CodePipeline. (ej. infrastructure)'
+#    Default: 'infrastructure'
+
+  IaCBucketName:
+    Type: String
+    Description: 'Nombre de bucket S3 para alojar las plantillas Cloudformation de CICD. (ej. iac-eks-task-1)'
+    Default: 'managed-stack'
+
+  CreateIaCBucket:
+    Type: String
+    Description: 'Crear el Bucket S3 a traves del cual se cargaran las plantillas de IaC CloudFormation'
+    Default: 'Si'
+    AllowedValues:
+      - 'Si'
+      - 'No'
+
+  CmkBucketKey:
+    Type: String
+    Description: 'Arn KMS asignada para Bucket'
+    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+
+  CmkSnsKey:
+    Type: String
+    Description: 'Arn KMS asignada para topico Sns'
+    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+
+  CmkCloudWatchLogGroupKey:
+    Type: String
+    Description: 'Arn KMS asignada para CloudWatch Log Group'
+    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+
+  CodebuildCMK:
+    Type: String
+    Description: 'Arn KMS asignada para topico CodeBuild'
+    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+
+  RetentionDays:
+    Type: Number
+    Description: 'Numero de dias de retencion de logs desde servicio CloudWatch'
+    Default: 90
+
+  vpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'VPC ID a asignar para recurso CodeBuild. Se puede ubicar en: Consola AWS / VPC / Your VPCs / vpc-xxxxxxxxxx'
+    Default: ''
+
+  subnetId:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: 'Ids de subredes privada a asignar para recurso CodeBuild. Se puede ubicar en: Consola AWS / VPC / Subnets / subnet-xxxxxxx'
+    Default: ''
+  
+  SecurityGroupCodeBuild:
+    Type: String
+    Description: 'Nombre de Grupo de Seguridad de CodeBuild'
+    Default: 'CODEBUILD-TRAFFIC-ALLOW'
+
+  EmailNotification:
+    Type: String
+    Description: 'Email ID para notificacion de aprobaciones desde pipeline. (ej. usuario@aeromexico.com)'
+    Default: ''
+
+  CloudWatchCodeBuildRuleName:
+    Type: String
+    Description: 'Nombre de regla de EventBridge para el recurso CodeBuild'
+    Default: 'CODEBUILD-EVENTRULE'
+
+  RepoIaCConnectionArn:
+    Type: String
+    Default: ''
+    Description: 'ARN de conexion Codestar - Github. Se puede ubicar en: Consola AWS / CodePipeline / Settings / Connections / arn:aws:codestar-connections:us-east-1:[ACCOUNT-ID]]:connection/xxxxx-xxxx-xxxx-xxxx-xxxxx'
+
+  RepoIaCName:
+    Type: String
+    Description: >
+      Nombre de repositorio GitHub donde se alojan las plantillas Cloudformation. (ej. DYN-AMX/AMX_APP)
+    Default: ''
+    
+  RepoIaCBranchName:
+    Type: String
+    Description: >
+      Rama Git donde se alojan las plantillas de Cloudformation. (ej. develop)
+    Default: 'develop'
+
+  RepoPipelineConnectionArn:
+    Type: String
+    Default: ''
+    Description: 'ARN de conexion Codestar - Github. Se puede ubicar en: Consola AWS / CodePipeline / Settings / Connections / arn:aws:codestar-connections:us-east-1:[ACCOUNT-ID]]:connection/xxxxx-xxxx-xxxx-xxxx-xxxxx'
+
+  RepoPipelineName:
+    Type: String
+    Description: >
+      Nombre de repositorio GitHub donde se alojan los artefactos (buildspecs) del pipeline. (ej. DYN-AMX/IAC_PIPELINE)
+    Default: ''
+    
+  RepoPipelineBranchName:
+    Type: String
+    Description: >
+      Rama del repositorio GitHub donde se alojan los artefactos (buildspecs) del pipeline. (ej. develop)
+    Default: 'develop'
+
+  ManualApproval:
+    Type: String
+    Description: 'Habilitar aprobacion manual entre etapas de CodePipeline'
+    Default: 'Si'
+    AllowedValues:
+      - 'Si'
+      - 'No'
+
+  # Tags
+  AreaResponsable:
+    Type: String
+    Description: 'Area responsable'
+    Default: 'Operaciones'
+    AllowedValues:
+      - 'SolucionesCorporativas'
+      - 'Comercial'
+      - 'Operaciones'
+      - 'CXLYL'
+      - 'Infraestrcutura'
+      - 'Seguridad'
+      - 'BI'
+
+  CentroDeCosto:
+    Type: String
+    Description: 'Centro de Costos asociados a TI'
+    Default: '120101'
+
+  DuenoDeLaCuenta:
+    Type: String
+    Description: 'Lista de distribucion asociada'
+    Default: 'usuario@aeromexico.com'
+
+  Proyecto:
+    Type: String
+    Description: 'Nombre oficial de OU padre'
+    Default: 'OPS'
+
+  Aplicacion:
+    Type: String
+    Description: 'Nombre de aplicacion oficial'
+    Default: 'APP_AMX_DEMO'
+
+  ImpactoANegocio:
+    Type: String
+    Description: 'Impacto de negocio'
+    Default: 'Tier0'
+    AllowedValues:
+      - 'Tier0'
+      - 'Tier1'
+      - 'Tier2'
+      - 'Tier3'
+      - 'Tier4'
+
+Conditions:
+
+  # Condicion que permite habilitar/deshabilitar las aprobaciones manuales del pipeline
+  WithManualApproval: !Equals [!Ref ManualApproval, Si]
+  WithIaCBucket: !Equals [!Ref CreateIaCBucket, Si]
+
+Mappings:
+  EnvironmentToLower:
+    PD:
+      Environment: pd
+    DE:
+      Environment: de
+    Q:
+      Environment: q
+
+Resources:
+
+  AmazonCloudWatchEventRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppPrefix}-${StackEnvironment}-IAM-ROLE-CLOUDWATCH-${CodePipelineName}'
+      MaxSessionDuration: 18000
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub '${AppPrefix}-${StackEnvironment}-IAM-POLICY-CLOUDWATCH-${CodePipelineName}'
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: GitHubConnection
+                Effect: Allow
+                Action:
+                  - codepipeline:StartPipelineExecution
+                Resource:
+                  - !Sub 'arn:aws:codepipeline:${AWS::Region}:${AWS::AccountId}:${AppPrefix}-${StackEnvironment}-CODEPIPELINE-${CodePipelineName}'
+              - Sid: CodeBuildActions
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                Resource:
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-TENABLE-${CodePipelineName}'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-SYNC-NESTEDSTACKS-${CodePipelineName}'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-CREATECHANGESET-${CodePipelineName}'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-EXECUTECHANGESET-${CodePipelineName}'
+
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppPrefix}-${StackEnvironment}-IAM-ROLE-CODEPIPELINE-${CodePipelineName}'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodeStarFullAccess
+        - arn:aws:iam::aws:policy/AWSCodeCommitPowerUser
+        - arn:aws:iam::aws:policy/CloudWatchEventsFullAccess
+      Policies:
+        - PolicyName: !Sub '${AppPrefix}-${StackEnvironment}-IAM-POLICY-CODEPIPELINE-${CodePipelineName}'
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListObjectsInBucket
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Join
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Join [ "-", [ !Ref AppPrefixLower, !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment], 's3', !Ref CodePipelineName ] ]
+                  - !Sub 'arn:aws:s3:::${IaCBucketName}'
+              - Sid: GetAndPutArtifacts
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:GetBucketPolicy
+                Resource:
+                  - !Join
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Join [ "-", [ !Ref AppPrefixLower, !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment], 's3', !Ref CodePipelineName ] ]
+                      - '/*'
+                  - !Sub 'arn:aws:s3:::${IaCBucketName}/*'
+              - Sid: ExecuteCloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResource
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:List*
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:UpdateStack
+                  - cloudformation:UpdateTerminationProtection
+                  - cloudformation:GetTemplate
+                  - cloudformation:ValidateTemplate
+                Resource: !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AppPrefix}-${StackEnvironment}-CF-INFRASTRUCTURE-RESOURCES/*'
+              - Sid: CodeBuildRoleToCloudFormation
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StopBuild
+                Resource: 
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-TENABLE-${CodePipelineName}'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-SYNC-NESTEDSTACKS-${CodePipelineName}'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-CREATECHANGESET-${CodePipelineName}'
+                  - !Sub 'arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:project/${AppPrefix}-${StackEnvironment}-CODEBUILD-EXECUTECHANGESET-${CodePipelineName}'
+              - Sid: CodeStarConnection
+                Effect: Allow
+                Action: codestar-connections:UseConnection
+                Resource: !Sub 'arn:aws:codestar-connections:${AWS::Region}:${AWS::AccountId}:connection/*'
+              - Sid: SNSPublishApproval
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: 
+                  - !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${AppPrefix}-${StackEnvironment}-SNS-APPROVAL-${CodePipelineName}'
+                  - !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${AppPrefix}-${StackEnvironment}-SNS-CW-EVENTS-${CodePipelineName}'
+              - Sid: IamPassRole
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - Fn::ImportValue: !Sub
+                      - "${AppPrefixLower}-${EnvironmentLower}-EKS-ServiceRoleArn"
+                      - EnvironmentLower: !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment]
+              - Sid: ManageEncryption
+                Action:
+                  - kms:Decrypt
+                  - kms:Describe*
+                  - kms:GenerateDataKey
+                Effect: Allow
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AppPrefix}-${StackEnvironment}-IAM-ROLE-CODEBUILD-${CodePipelineName}'
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchEventsFullAccess
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: LogToCloudWatch
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Join
+                    - ''
+                    - - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/'
+                      - !Select [1, !Split ["-", !Ref AppPrefix]]
+                      - !Sub '/${AppPrefix}-${StackEnvironment}-CW-LOGGROUP-${CodePipelineName}:*'
+              - Sid: GetAndPutArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource:
+                  - !Join
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Join [ "-", [ !Ref AppPrefixLower, !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment], 's3', !Ref CodePipelineName ] ]
+                      - '/*'
+                  - !Sub 'arn:aws:s3:::${IaCBucketName}/*'
+              - Sid: ListObjectsForCodeBuild
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource:
+                  - !Join
+                    - ''
+                    - - 'arn:aws:s3:::'
+                      - !Join [ "-", [ !Ref AppPrefixLower, !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment], 's3', !Ref CodePipelineName ] ]
+                  - !Sub 'arn:aws:s3:::${IaCBucketName}'
+              - Sid: ValidateCloudFormationTemplate
+                Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: '*'
+              - Sid: ManageEncryption
+                Action:
+                  - kms:Decrypt
+                  - kms:Describe*
+                  - kms:GenerateDataKey
+                Effect: Allow
+                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+              - Sid: AllowReadSecrets
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:ListSecretVersionIds
+                  - secretsmanager:ListSecrets
+                Resource:
+                  - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:*'
+              - Sid: Ec2Permissions
+                Effect: Allow
+                Action:
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeDhcpOptions
+                  - ec2:DeleteNetworkInterface
+                  - ec2:CreateNetworkInterface
+                  - ec2:CreateNetworkInterfacePermission
+                Resource: '*'
+              - Sid: DescribeStacks
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ListExports
+                Resource: '*'
+#                  - !Sub 'arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${AWS::StackName}/*'
+                
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  snsApprovalNotification:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub '${AppPrefix}-${StackEnvironment}-SNS-APPROVAL-${CodePipelineName}'
+      FifoTopic: false
+      TopicName: !Sub '${AppPrefix}-${StackEnvironment}-SNS-APPROVAL-${CodePipelineName}'
+      KmsMasterKeyId: !Ref CmkSnsKey
+
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  snsApprovalSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref EmailNotification
+      Protocol: 'email'
+      TopicArn: !Ref snsApprovalNotification
+
+  snsPipelinesNotification:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub '${AppPrefix}-${StackEnvironment}-SNS-CW-EVENTS-${CodePipelineName}'
+      FifoTopic: false
+      TopicName: !Sub '${AppPrefix}-${StackEnvironment}-SNS-CW-EVENTS-${CodePipelineName}'
+      KmsMasterKeyId: !Ref CmkSnsKey
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  snsEventsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref EmailNotification
+      Protocol: 'email'
+      TopicArn: !Ref snsPipelinesNotification
+
+  EventBridgeToToSnsPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties: 
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: events.amazonaws.com
+          Action: sns:Publish
+          Resource: !Ref snsPipelinesNotification
+      Topics: 
+        - !Ref snsPipelinesNotification 
+
+  PipelineArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Join [ "-", [ !Ref AppPrefixLower, !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment], 's3', !Ref CodePipelineName ] ]
+      VersioningConfiguration:
+        Status: 'Suspended'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !Ref CmkBucketKey
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  ManageStacksBucket:
+    Condition: WithIaCBucket
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref IaCBucketName
+      VersioningConfiguration:
+        Status: 'Suspended'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: 'aws:kms'
+              KMSMasterKeyID: !Ref CmkBucketKey
+            BucketKeyEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: True
+        BlockPublicPolicy: True
+        IgnorePublicAcls: True
+        RestrictPublicBuckets: True
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  CodePipelineStateFailureEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-EVENTBRIDGE-PIPELINE-EVENTRULE-${CodePipelineName}'
+      Description: 'Regla de CW EventBridge que se encarga de enviar la notificacion en caso de fallo de ejecucion de CodePipeline'
+      State: 'ENABLED'
+      Targets:
+        - Arn: !Ref snsPipelinesNotification
+          Id: !GetAtt snsPipelinesNotification.TopicName
+          InputTransformer:
+            InputTemplate: '"El CodePipeline ha fallado. Dirigirse a https://console.aws.amazon.com/codepipeline/home?region=us-east-1#/view/"'
+            InputPathsMap:
+              pipeline: "$.detail.pipeline"
+      EventPattern:
+        detail-type:
+          - 'CodePipeline Pipeline Execution State Change'
+        source:
+          - 'aws.codepipeline'
+        detail:
+          event:
+            - FAILED
+            - STOPPED
+      RoleArn: !GetAtt AmazonCloudWatchEventRole.Arn
+
+  CodebuildStateFailureEventRule:
+    Type: "AWS::Events::Rule"
+    Properties:
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-EVENTBRIDGE-${CloudWatchCodeBuildRuleName}-${CodePipelineName}'
+      Description: 'Regla de CW EventBridge que se encarga de enviar la notificacion en caso de fallo de ejecucion de CodeBuild'
+      EventPattern:
+        account:
+          - !Sub "${AWS::AccountId}"
+        region:
+          - !Sub "${AWS::Region}"
+        source:
+          - aws.codebuild
+        detail-type:
+          - CodeBuild Build State Change
+        detail:
+          project-name:
+            - CodeBuildProjects
+          build-status:
+            - FAILED
+            - STOPPED
+      State: "ENABLED"
+      Targets:
+        - Arn: !Ref snsPipelinesNotification
+          Id: !GetAtt snsPipelinesNotification.TopicName
+          InputTransformer:
+            InputTemplate: '"El proyecto <project-name> tiene el siguiente estatus: <build-status>. Puede revisarlo en la siguiente liga <deep-link>"'
+            InputPathsMap:
+              project-name: "$.detail.project-name"
+              build-status: "$.detail.build-status"
+              deep-link: "$.detail.additional-information.logs.deep-link"
+      RoleArn: !GetAtt AmazonCloudWatchEventRole.Arn
+
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join
+        - ''
+        - - '/'
+          - !Select [1, !Split ["-", !Ref AppPrefix]]
+          - !Sub '/${AppPrefix}-${StackEnvironment}-CW-LOGGROUP-${CodePipelineName}'
+      RetentionInDays: !Ref RetentionDays
+      KmsKeyId: !Ref CmkCloudWatchLogGroupKey
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  CodeBuildSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${AppPrefix}-${StackEnvironment}-SECURITYGROUP-${SecurityGroupCodeBuild}-${CodePipelineName}'
+      GroupDescription: Grupo de Seguridad de CodeBuild
+      VpcId: !Ref vpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  CodeBuildTenableProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      EncryptionKey: !Ref CodebuildCMK
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspecs/buildspec-tenable.yaml
+      TimeoutInMinutes: 30
+      QueuedTimeoutInMinutes: 30
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ImagePullCredentialsType: CODEBUILD
+        ComputeType: BUILD_GENERAL1_LARGE
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: StackName
+            Value: !Sub "${AWS::StackName}"
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref LogGroup
+          StreamName: "stage-tenable"
+          Status: ENABLED
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-CODEBUILD-TENABLE-${CodePipelineName}'
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      VpcConfig:
+          SecurityGroupIds: 
+            - !GetAtt CodeBuildSecurityGroup.GroupId
+          Subnets: !Ref subnetId
+          VpcId: !Ref vpcId
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  CodeBuildCopyProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      EncryptionKey: !Ref CodebuildCMK
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspecs/buildspec-copy.yaml
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref LogGroup
+          StreamName: "stage-copy"
+          Status: ENABLED
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ImagePullCredentialsType: CODEBUILD
+        ComputeType: BUILD_GENERAL1_SMALL
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: StackName
+            Value: !Sub "${AWS::StackName}"
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-CODEBUILD-SYNC-NESTEDSTACKS-${CodePipelineName}'
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      VpcConfig:
+        SecurityGroupIds: 
+          - !GetAtt CodeBuildSecurityGroup.GroupId
+        Subnets: !Ref subnetId
+        VpcId: !Ref vpcId
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  CreateChangeSetProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      EncryptionKey: !Ref CodebuildCMK
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspecs/buildspec-create.yaml
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref LogGroup
+          StreamName: "stage-create"
+          Status: ENABLED
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ImagePullCredentialsType: CODEBUILD
+        ComputeType: BUILD_GENERAL1_SMALL
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: StackName
+            Value: !Sub "${AWS::StackName}"
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-CODEBUILD-CREATECHANGESET-${CodePipelineName}'
+      ServiceRole:
+        Fn::ImportValue: !Sub
+          - "${AppPrefixLower}-${EnvironmentLower}-EKS-ServiceRoleArn"
+          - EnvironmentLower: !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment]
+      VpcConfig:
+          SecurityGroupIds:
+            - !GetAtt CodeBuildSecurityGroup.GroupId
+          Subnets: !Ref subnetId
+          VpcId: !Ref vpcId
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  ExecuteChangeSetProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      EncryptionKey: !Ref CodebuildCMK
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspecs/buildspec-execute.yaml
+      LogsConfig:
+        CloudWatchLogs:
+          GroupName: !Ref LogGroup
+          StreamName: "stage-execute"
+          Status: ENABLED
+      Environment:
+        Type: LINUX_CONTAINER
+        Image: aws/codebuild/standard:7.0
+        ImagePullCredentialsType: CODEBUILD
+        ComputeType: BUILD_GENERAL1_SMALL
+        PrivilegedMode: false
+        EnvironmentVariables:
+          - Name: StackName
+            Value: !Sub "${AWS::StackName}"
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-CODEBUILD-EXECUTECHANGESET-${CodePipelineName}'
+      ServiceRole:
+        Fn::ImportValue: !Sub
+          - "${AppPrefixLower}-${EnvironmentLower}-EKS-ServiceRoleArn"
+          - EnvironmentLower: !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment]
+      VpcConfig:
+          SecurityGroupIds:
+            - !GetAtt CodeBuildSecurityGroup.GroupId
+          Subnets: !Ref subnetId
+          VpcId: !Ref vpcId
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactsBucket
+      Name: !Sub '${AppPrefix}-${StackEnvironment}-CODEPIPELINE-${CodePipelineName}'
+      RestartExecutionOnUpdate: false
+      RoleArn: !GetAtt PipelineRole.Arn
+      Stages:
+        - Name: Checkout
+          Actions:
+            - Name: SourceIaC
+              RunOrder: 1
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: 1
+              Configuration:
+                ConnectionArn: !Ref RepoIaCConnectionArn
+                FullRepositoryId: !Ref RepoIaCName
+                BranchName: !Ref RepoIaCBranchName
+              OutputArtifacts:
+                - Name: SourceIaC
+
+            - Name: PipelineSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: CodeStarSourceConnection
+              RunOrder: 1
+              Configuration:
+                ConnectionArn: !Ref RepoPipelineConnectionArn
+                FullRepositoryId: !Ref RepoPipelineName
+                BranchName: !Ref RepoPipelineBranchName
+                DetectChanges: false
+              OutputArtifacts:
+                - Name: PipelineSourceOutput
+
+        - Name: Tenable
+          Actions:
+            - Name: SecurityScan
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildTenableProject
+                PrimarySource: PipelineSourceOutput
+              InputArtifacts:
+                - Name: SourceIaC
+                - Name: PipelineSourceOutput
+              RunOrder: 1
+        - !If
+          - WithManualApproval      
+          - Name: ManualApproval
+            Actions:
+              - Name: ApprovalToStartProcess
+                ActionTypeId:
+                  Category: Approval
+                  Owner: AWS
+                  Provider: Manual
+                  Version: 1
+                Configuration:
+                  NotificationArn: !GetAtt snsApprovalNotification.TopicArn
+                  CustomData: 'Aprobacion para sincronizacion de las plantillas a bucket'
+          - !Ref "AWS::NoValue"
+        - Name: Copy
+          Actions:
+            - Name: SyncTemplatesToS3
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CodeBuildCopyProject
+                PrimarySource: PipelineSourceOutput
+              InputArtifacts:
+                - Name: SourceIaC
+                - Name: PipelineSourceOutput
+              OutputArtifacts:
+                - Name: OutputArtifact
+              RunOrder: 1
+
+        - Name: CreateChangeSet
+          Actions:
+            - Name: CreateChangeSet 
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref CreateChangeSetProject
+                PrimarySource: PipelineSourceOutput
+              InputArtifacts:
+                - Name: SourceIaC
+                - Name: PipelineSourceOutput
+              OutputArtifacts:
+                - Name: OutputCreateChangeSet
+              RunOrder: 1
+        - !If
+          - WithManualApproval      
+          - Name: ApproveChangeSet
+            Actions:
+              - Name: ApproveChangeSet
+                ActionTypeId:
+                  Category: Approval
+                  Owner: AWS
+                  Provider: Manual
+                  Version: 1
+                Configuration:
+                  NotificationArn: !GetAtt snsApprovalNotification.TopicArn
+                  CustomData: 'Aprobacion para despliegue de plantillas Cloudformation'
+          - !Ref "AWS::NoValue"
+
+        - Name: ExecuteChangeSet
+          Actions:
+            - Name: ExecuteChangeSet
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref ExecuteChangeSetProject
+                PrimarySource: PipelineSourceOutput
+              InputArtifacts:
+                - Name: PipelineSourceOutput
+                - Name: OutputCreateChangeSet
+              RunOrder: 1
+      Tags:
+        - Key: Ambiente
+          Value: !Ref StackEnvironment
+        - Key: AreaResponsable
+          Value: !Ref AreaResponsable
+        - Key: CentroDeCosto
+          Value: !Ref CentroDeCosto
+        - Key: DuenoDeLaCuenta
+          Value: !Ref DuenoDeLaCuenta
+        - Key: Proyecto
+          Value: !Ref Proyecto
+        - Key: Aplicacion
+          Value: !Ref Aplicacion
+        - Key: ImpactoANegocio
+          Value: !Ref ImpactoANegocio
+
+Outputs:
+  AmxCWRoleName:
+    Description: Nombre de rol CloudWatch EventBridge para manejo de eventos de fallo por parte de CodeBuild/Pipeline
+    Value: !Ref AmazonCloudWatchEventRole
+    Export:
+      Name: !Sub '${AppPrefixLower}-cw-role-name-${CodePipelineName}'
+
+  AmxCWRoleArn:
+    Description: ARN de rol CloudWatch EventBridge para manejo de eventos de fallo por parte de CodeBuild/Pipeline
+    Value: !GetAtt AmazonCloudWatchEventRole.Arn
+    Export:
+      Name: !Sub '${AppPrefixLower}-cw-role-arn-${CodePipelineName}'
+
+  AmxPipelineRoleName:
+    Description:  Nombre de rol pipeline para manejo de acciones durante la ejecución del pipeline
+    Value: !Ref PipelineRole
+    Export:
+      Name: !Sub '${AppPrefixLower}-pipeline-role-name-${CodePipelineName}'
+
+  AmxPipelineRoleArn:
+    Description: ARN de rol pipeline para manejo de acciones durante la ejecución del pipeline
+    Value: !GetAtt PipelineRole.Arn
+    Export:
+      Name: !Sub '${AppPrefixLower}-pipeline-role-arn-${CodePipelineName}'
+
+  AmxCBRoleName:
+    Description: Nombre de rol codebuild para ejecución de acciones desde el buildspec
+    Value: !Ref CodeBuildRole
+    Export:
+      Name: !Sub '${AppPrefixLower}-cb-role-name-${CodePipelineName}'
+
+  AmxCBRoleArn:
+    Description: ARN de rol codebuild para ejecución de acciones desde el buildspec
+    Value: !GetAtt CodeBuildRole.Arn
+    Export:
+      Name: !Sub '${AppPrefixLower}-cb-role-arn-${CodePipelineName}'
+
+  AmxPipelineName:
+    Description: Nombre de pipeline desplegado
+    Value: !Ref Pipeline
+    Export:
+      Name: !Sub '${AppPrefixLower}-pipeline-name-${CodePipelineName}'
+
+#  NestedBucketName:
+#    Description: Nombre del Bucket S3 para cargar plantillas CF
+#    Value: !Ref ManageStacksBucket
+#    Export:
+#      Name: !Sub
+#        - '${AppPrefixLower}-${EnvironmentLower}-nested-bucket-name-${CodePipelineName}'
+#        - EnvironmentLower: !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment]

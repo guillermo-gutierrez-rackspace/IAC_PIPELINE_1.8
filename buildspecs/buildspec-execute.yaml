@@ -1,0 +1,22 @@
+version: 0.2
+env:
+  shell: bash
+#  variables:
+#    STACK_NAME: "AMX-RXS-EKS-TSK-1-CF"
+
+phases:
+  pre_build:
+    commands:
+      - aws cloudformation describe-stacks --stack-name ${StackName} --query 'Stacks[0].Parameters' | jq '[ .[] | select(.ParameterKey) ]' > /tmp/${StackName}.json
+#     Parameters
+      - NewStackName=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "NewStackName") | .ParameterValue' | tr -d '"')
+      - ChangeSetName=$(cat ${CODEBUILD_SRC_DIR_OutputCreateChangeSet}/tmp/ChangeSetName.txt)
+      - echo $ChangeSetName
+  build:
+    commands:
+      - env
+      - echo "Execute Change Set"
+      - |
+        aws cloudformation execute-change-set                  \
+          --stack-name ${NewStackName}                         \
+          --change-set-name ${ChangeSetName}

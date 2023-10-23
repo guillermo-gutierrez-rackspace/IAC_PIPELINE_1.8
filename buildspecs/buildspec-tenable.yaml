@@ -1,0 +1,34 @@
+version: 0.2
+
+#TENABLE_URL: "https://cloud.tenable.com/cns"
+#TOKEN: "635370e4-9d79-4f6a-afb1-58b386c86fb6"
+
+env:
+  shell: bash
+  variables:
+    EXECUTE_SECURITY_SCAN: "OFF"
+#  secrets-manager:
+#    TENABLE_URL: "AMX-APP-DE-SM-TENABLE-CREDENTIALS:url"
+#    TOKEN: "AMX-APP-DE-SM-TENABLE-CREDENTIALS:token"
+
+phases:
+  install:
+    commands:
+      - echo "Download Tenable CLI"
+      - wget https://www.tenable.com/downloads/api/v2/pages/cloud-security/files/accurics-cli_latest_linux_x86_64.tar.gz -O accurics.tar.gz
+      - tar xzvf accurics.tar.gz
+      - echo "Download Terrascan"
+      - curl -L "$(curl -s https://api.github.com/repos/tenable/terrascan/releases/latest | grep -o -E "https://.+?_Linux_x86_64.tar.gz")" > terrascan.tar.gz
+      - echo "UnTar Terrascan"
+      - tar -v -xf terrascan.tar.gz terrascan && chmod +x terrascan && install terrascan /usr/local/bin && rm terrascan
+  build:
+    commands:
+      - echo "Do scan..."
+      - ls -lR
+      - |
+        if [ "${EXECUTE_SECURITY_SCAN}" = "ON" ]
+        then
+          ./accurics scan -mode=pipeline -appurl="${TENABLE_URL}" -fail -token="${TOKEN}"
+        else
+          echo "Vulnerability scan disabled."
+        fi

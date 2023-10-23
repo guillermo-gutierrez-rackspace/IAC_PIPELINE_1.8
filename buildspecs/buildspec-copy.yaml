@@ -1,0 +1,39 @@
+version: 0.2
+env:
+  shell: bash
+#  variables:
+#    TEMPLATE_BUCKET: "amx-app-de-s3-iac-eks-task-1"
+#    ROOT_STACK_TEMPLATE: "AMX-APP-ROOT-STACK"
+
+phases:
+  pre_build:
+    commands:
+      - aws cloudformation describe-stacks --stack-name ${StackName} --query 'Stacks[0].Parameters' | jq '[ .[] | select(.ParameterKey) ]' > /tmp/${StackName}.json
+      - aws cloudformation list-exports --query 'Exports' > /tmp/Exports.json
+#     Parameters
+      - AppPrefix=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "AppPrefix") | .ParameterValue' | tr -d '"')
+      - StackEnvironment=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "StackEnvironment") | .ParameterValue' | tr -d '"')
+      - CodePipelineName=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "CodePipelineName") | .ParameterValue' | tr -d '"')
+#     Exports
+      - ExportName="${AppPrefix,,}-${StackEnvironment,,}-nested-bucket-name-${CodePipelineName}"
+      - NestedBucketName=$(cat /tmp/Exports.json | jq '.[] | select(.Name == "'${ExportName}'") | .Value' | tr -d '"')
+  build:
+    commands:
+      - env
+      - echo "Sincronizando plantillas a S3 - Managed stacks"
+      - cd $CODEBUILD_SRC_DIR_SourceIaC/
+      - ls -lR
+      - |
+        aws s3 sync . "s3://${NestedBucketName}" \
+          --exclude 'buildspecs/*'               \
+          --exclude 'build-scripts/*'            \
+          --exclude 'readme.md'                  \
+          --exclude 'README.md'                  \
+          --exclude 'CHANGELOG.md'               \
+          --delete
+
+#artifacts:
+#  files:
+#    - '**/*'
+#  base-directory: ${CODEBUILD_SRC_DIR_SourceIaC}
+#  discard-paths: yes

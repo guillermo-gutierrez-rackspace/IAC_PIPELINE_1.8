@@ -14,9 +14,10 @@ phases:
       - AppPrefix=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "AppPrefix") | .ParameterValue' | tr -d '"')
       - StackEnvironment=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "StackEnvironment") | .ParameterValue' | tr -d '"')
       - CodePipelineName=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "CodePipelineName") | .ParameterValue' | tr -d '"')
+      - IaCBucketName=$(cat /tmp/${StackName}.json | jq '.[] | select(.ParameterKey == "IaCBucketName") | .ParameterValue' | tr -d '"')
 #     Exports
-      - ExportName="${AppPrefix,,}-${StackEnvironment,,}-nested-bucket-name-${CodePipelineName}"
-      - NestedBucketName=$(cat /tmp/Exports.json | jq '.[] | select(.Name == "'${ExportName}'") | .Value' | tr -d '"')
+#      - ExportName="${AppPrefix,,}-${StackEnvironment,,}-nested-bucket-name-${CodePipelineName}"
+#      - NestedBucketName=$(cat /tmp/Exports.json | jq '.[] | select(.Name == "'${ExportName}'") | .Value' | tr -d '"')
   build:
     commands:
       - env
@@ -24,7 +25,7 @@ phases:
       - cd $CODEBUILD_SRC_DIR_SourceIaC/
       - ls -lR
       - |
-        aws s3 sync . "s3://${NestedBucketName}" \
+        aws s3 sync . "s3://${IaCBucketName}"    \
           --exclude 'buildspecs/*'               \
           --exclude 'build-scripts/*'            \
           --exclude 'readme.md'                  \

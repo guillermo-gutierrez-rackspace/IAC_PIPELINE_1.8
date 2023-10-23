@@ -1,5 +1,5 @@
-# IAC_PIPELINE_1.7
-IaC Pipeline 1.7
+# IAC_PIPELINE_1.8
+IaC Pipeline 1.8
 - This release works with two GitHub Repos
   + IaC - Single Component
   + Pipeline Buildspecs

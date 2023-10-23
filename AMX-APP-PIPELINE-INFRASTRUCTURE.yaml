@@ -398,7 +398,9 @@ Resources:
               - Sid: CodeStarConnection
                 Effect: Allow
                 Action: codestar-connections:UseConnection
-                Resource: !Sub 'arn:aws:codestar-connections:${AWS::Region}:${AWS::AccountId}:connection/*'
+                Resource:
+                  - !Ref RepoIaCConnectionArn
+                  - !Ref RepoPipelineConnectionArn
               - Sid: SNSPublishApproval
                 Effect: Allow
                 Action:
@@ -420,7 +422,11 @@ Resources:
                   - kms:Describe*
                   - kms:GenerateDataKey
                 Effect: Allow
-                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+                Resource:
+                  - !Ref CmkBucketKey
+                  - !Ref CmkSnsKey
+                  - !Ref CmkCloudWatchLogGroupKey
+#!Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
 
       Tags:
         - Key: Ambiente
@@ -493,17 +499,21 @@ Resources:
                     - - 'arn:aws:s3:::'
                       - !Join [ "-", [ !Ref AppPrefixLower, !FindInMap [EnvironmentToLower, !Ref StackEnvironment, Environment], 's3', !Ref CodePipelineName ] ]
                   - !Sub 'arn:aws:s3:::${IaCBucketName}'
-              - Sid: ValidateCloudFormationTemplate
-                Effect: Allow
-                Action: cloudformation:ValidateTemplate
-                Resource: '*'
+#              - Sid: ValidateCloudFormationTemplate
+#                Effect: Allow
+#                Action: cloudformation:ValidateTemplate
+#                Resource: '*'
               - Sid: ManageEncryption
                 Action:
                   - kms:Decrypt
                   - kms:Describe*
                   - kms:GenerateDataKey
                 Effect: Allow
-                Resource: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+                Resource:
+                  - !Ref CmkBucketKey
+                  - !Ref CmkSnsKey
+                  - !Ref CmkCloudWatchLogGroupKey
+#!Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:key/*'
               - Sid: AllowReadSecrets
                 Effect: Allow
                 Action:

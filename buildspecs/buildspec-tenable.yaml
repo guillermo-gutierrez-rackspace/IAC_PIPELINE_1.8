@@ -1,8 +1,5 @@
 version: 0.2
 
-#TENABLE_URL: "https://cloud.tenable.com/cns"
-#TOKEN: "635370e4-9d79-4f6a-afb1-58b386c86fb6"
-
 env:
   shell: bash
   variables:

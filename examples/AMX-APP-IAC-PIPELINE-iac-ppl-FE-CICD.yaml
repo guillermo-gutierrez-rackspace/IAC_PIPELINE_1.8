@@ -66,6 +66,7 @@ Parameters:
       - 'PD'
       - 'Q'
       - 'DE'
+    Default: 'DE'
       
   AppPrefix:
     Type: String
@@ -80,60 +81,55 @@ Parameters:
   TemplateFileName:
     Type: String
     Description: 'Nombre del archivo que contiene la plantilla CloudFormation con la IaC. (ej. AMX-APP-VPC-CF.yaml)'
-    Default: ''
+    Default: 'AMX-RXS-FE-CICD-CF.yaml'
 
   ParameterFileName:
     Type: String
     Description: 'Nombre del archivo que contiene los parametros requeridos por la plantilla CloudFormation en formato JSON. (ej. AMX-APP-VPC-CF.json)'
-    Default: ''
+    Default: 'AMX-RXS-FE-CICD-CF-DE.json'
 
   NewStackName:
     Type: String
     Description: 'Nombre del Stack CloudFormation a crear en base a la plantilla en TemplateFileName y parameteros en ParameterFileName. (ej. AMX-APP-VPC-CF).'
-    Default: ''
+    Default: 'AMX-RXS-FE-CICD-CF-DE'
 
   CodePipelineName:
     Type: String
-    Description: 'Nombre de recurso Codepipeline IaC'
-    Default: 'IAC'
-
-#  BucketName:
-#    Type: String
-#    Description: 'Nombre de bucket S3 para alojar los artefactos de CodePipeline. (ej. infrastructure)'
-#    Default: 'infrastructure'
+    Description: 'Nombre de recurso Codepipeline IaC en minusculas.'
+    Default: 'iac-ppl-fe-cicd'
 
   IaCBucketName:
     Type: String
     Description: 'Nombre de bucket S3 para alojar las plantillas Cloudformation de CICD. (ej. iac-eks-task-1)'
-    Default: 'managed-stack'
+    Default: 'amx-app-de-s3-iac-fe-cicd'
 
   CreateIaCBucket:
     Type: String
     Description: 'Crear el Bucket S3 a traves del cual se cargaran las plantillas de IaC CloudFormation'
-    Default: 'Si'
     AllowedValues:
       - 'Si'
       - 'No'
+    Default: 'Si'
 
   CmkBucketKey:
     Type: String
     Description: 'Arn KMS asignada para Bucket'
-    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+    Default: 'arn:aws:kms:us-east-1:766819176966:key/6f58630d-af4b-4466-b42a-c4731448f623'
 
   CmkSnsKey:
     Type: String
     Description: 'Arn KMS asignada para topico Sns'
-    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+    Default: 'arn:aws:kms:us-east-1:766819176966:key/6f58630d-af4b-4466-b42a-c4731448f623'
 
   CmkCloudWatchLogGroupKey:
     Type: String
     Description: 'Arn KMS asignada para CloudWatch Log Group'
-    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+    Default: 'arn:aws:kms:us-east-1:766819176966:key/6f58630d-af4b-4466-b42a-c4731448f623'
 
   CodebuildCMK:
     Type: String
     Description: 'Arn KMS asignada para topico CodeBuild'
-    Default: 'arn:aws:kms:us-east-1:123456789:key/1i6227a7-4d39-49b2-9fc6-1234599vaf9'
+    Default: 'arn:aws:kms:us-east-1:766819176966:key/6f58630d-af4b-4466-b42a-c4731448f623'
 
   RetentionDays:
     Type: Number
@@ -143,12 +139,12 @@ Parameters:
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: 'VPC ID a asignar para recurso CodeBuild. Se puede ubicar en: Consola AWS / VPC / Your VPCs / vpc-xxxxxxxxxx'
-    Default: ''
+    Default: 'vpc-0c9d013543a933d4a'
 
   SubnetId:
     Type: List<AWS::EC2::Subnet::Id>
     Description: 'Ids de subredes privada a asignar para recurso CodeBuild. Se puede ubicar en: Consola AWS / VPC / Subnets / subnet-xxxxxxx'
-    Default: ''
+    Default: 'subnet-07cd59026aeac712c'
   
   SecurityGroupCodeBuild:
     Type: String
@@ -158,7 +154,7 @@ Parameters:
   EmailNotification:
     Type: String
     Description: 'Email ID para notificacion de aprobaciones desde pipeline. (ej. usuario@aeromexico.com)'
-    Default: ''
+    Default: 'usuario@aeromexico.com'
 
   CloudWatchCodeBuildRuleName:
     Type: String
@@ -167,14 +163,14 @@ Parameters:
 
   RepoIaCConnectionArn:
     Type: String
-    Default: ''
     Description: 'ARN de conexion Codestar - Github. Se puede ubicar en: Consola AWS / CodePipeline / Settings / Connections / arn:aws:codestar-connections:us-east-1:[ACCOUNT-ID]]:connection/xxxxx-xxxx-xxxx-xxxx-xxxxx'
+    Default: 'arn:aws:codestar-connections:us-east-1:766819176966:connection/31d9cbc1-dbf5-4f7c-9119-d88f623f5a0a'
 
   RepoIaCName:
     Type: String
     Description: >
       Nombre de repositorio GitHub donde se alojan las plantillas Cloudformation. (ej. DYN-AMX/AMX_APP)
-    Default: ''
+    Default: 'guillermo-gutierrez-rackspace/FE_CICD_1.2'
     
   RepoIaCBranchName:
     Type: String
@@ -184,14 +180,14 @@ Parameters:
 
   RepoPipelineConnectionArn:
     Type: String
-    Default: ''
     Description: 'ARN de conexion Codestar - Github. Se puede ubicar en: Consola AWS / CodePipeline / Settings / Connections / arn:aws:codestar-connections:us-east-1:[ACCOUNT-ID]]:connection/xxxxx-xxxx-xxxx-xxxx-xxxxx'
+    Default: 'arn:aws:codestar-connections:us-east-1:766819176966:connection/31d9cbc1-dbf5-4f7c-9119-d88f623f5a0a'
 
   RepoPipelineName:
     Type: String
     Description: >
       Nombre de repositorio GitHub donde se alojan los artefactos (buildspecs) del pipeline. (ej. DYN-AMX/IAC_PIPELINE)
-    Default: ''
+    Default: 'guillermo-gutierrez-rackspace/IAC_PIPELINE_1.8'
     
   RepoPipelineBranchName:
     Type: String
@@ -202,10 +198,10 @@ Parameters:
   ManualApproval:
     Type: String
     Description: 'Habilitar aprobacion manual entre etapas de CodePipeline'
-    Default: 'Si'
     AllowedValues:
       - 'Si'
       - 'No'
+    Default: 'Si'
 
   # Tags
   AreaResponsable:

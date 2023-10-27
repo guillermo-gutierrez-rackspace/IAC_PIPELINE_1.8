@@ -28,6 +28,7 @@ phases:
         aws s3 sync . "s3://${IaCBucketName}"    \
           --exclude 'buildspecs/*'               \
           --exclude 'build-scripts/*'            \
+          --exclude 'docs/*'                     \
           --exclude 'readme.md'                  \
           --exclude 'README.md'                  \
           --exclude 'CHANGELOG.md'               \
